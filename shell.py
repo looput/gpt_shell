@@ -12,9 +12,15 @@ import openai
 import requests
 import debug
 
+try:
+    import gnureadline as readline
+except ImportError:
+    print('import gnu readline error')
+    import readline
+
 colorama.init()
 
-EXAMPLES_CONTEXT = "Linux bash command to accomplish the task"
+EXAMPLES_CONTEXT = "Linux bash command to accomplish the task, you should return command that can be executed directly."
 
 REVERSE_EXAMPLES_CONTEXT = "English description of Linux bash command"
 
@@ -48,8 +54,9 @@ def get_command_openai(prompt):
         messages=template_mess,
         max_tokens=200,
         temperature=0,
-        stop=["\n", "<|endoftext|>"],
+        stop=[ "<|endoftext|>"],
     )
+    
     if results:
         return results['choices'][0]['message']['content']
 
@@ -84,6 +91,27 @@ get_description = get_description_openai
 def reverse_pairs(ls):
     return [(b, a) for a, b in ls]
 
+def readline_with_edit(prompt, hint = 'gpt powerd'):
+    try:
+        sys.stdout.write("\033[1A")
+        sys.stdout.flush()
+        
+        sys.stdout.write(f"{hint}\n")
+        sys.stdout.flush()
+        
+        readline.set_startup_hook(lambda: readline.insert_text(prompt))
+        
+        readline.add_history(prompt)
+        
+        readline.parse_and_bind("set enable-keypad on")
+        readline.parse_and_bind("set editing-mode vi")  # 可选，使用 vi 编辑模式
+        
+        line = input(f"\001{Fore.GREEN}{Style.BRIGHT}\002<~ \001{Fore.CYAN}{Style.NORMAL}\002")
+        return line.strip()
+    except (EOFError, KeyboardInterrupt):
+        return None
+    finally:
+        readline.set_startup_hook()
 
 def main():
     CURRENT_JOB = None
@@ -118,15 +146,14 @@ def main():
             print("<~ Unable to figure out how to do that")
             continue
         try:
-            approved = input(f"\001{Fore.GREEN}{Style.BRIGHT}\002<~ \001{Fore.CYAN}{Style.NORMAL}\002" +
-                             new_command + "\002")
+            edit_command = readline_with_edit(new_command)
 
         except (EOFError, KeyboardInterrupt):
             print(
                 f"\n{Fore.RED}{Style.BRIGHT}<~ Canceled{Style.RESET_ALL}")
             continue
 
-        CURRENT_JOB = subprocess.Popen(["bash", "-c", new_command])
+        CURRENT_JOB = subprocess.Popen(["bash", "-c", edit_command])
         try:
             CURRENT_JOB.wait()
         except KeyboardInterrupt:
